@@ -283,6 +283,12 @@ func writeAtlas(sprites []*Sprite, w, h int, path string) error {
 		draw.Draw(atlas, dst, s.Img, s.Img.Bounds().Min, draw.Src)
 	}
 
+	if dir := filepath.Dir(path); dir != "." {
+		if err := os.MkdirAll(dir, 0o755); err != nil {
+			return err
+		}
+	}
+
 	f, err := os.Create(path)
 	if err != nil {
 		return err
