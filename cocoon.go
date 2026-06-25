@@ -155,8 +155,8 @@ func main() {
 func printHelp() {
 	fmt.Printf("%s v%s - a simple sprite atlas packer\n\n", teal("cocoon"), version)
 	fmt.Printf("Usage: %s <directory> [flags]\n\n", teal("cocoon"))
-	fmt.Printf("Packs all .png files in <directory> into a single atlas image\n")
-	fmt.Printf("plus a .json file mapping each sprite name to its pixel rect.\n\n")
+	fmt.Printf("Packs all .png files in <directory> (recursively) into a single\n")
+	fmt.Printf("atlas image plus a .json file mapping each sprite name to its rect.\n\n")
 	fmt.Printf("Flags:\n")
 	fmt.Printf("  %s <file>   Output atlas image (default: atlas.png)\n", teal("-o"))
 	fmt.Printf("  %s <px>     Padding between sprites (default: 1)\n", teal("-p"))
@@ -166,35 +166,36 @@ func printHelp() {
 
 // --- Loading ---
 
+// loadSprites walks dir recursively, packing every .png found in any
+// subdirectory. The sprite name is the file's base name without extension
+// (the directory it lives in is purely organizational), so two .png files
+// sharing a name in different folders is a hard error.
 func loadSprites(dir string) ([]*Sprite, error) {
-	entries, err := os.ReadDir(dir)
-	if err != nil {
-		return nil, err
-	}
-
 	var sprites []*Sprite
 	seen := map[string]string{}
 
-	for _, e := range entries {
-		if e.IsDir() || !strings.EqualFold(filepath.Ext(e.Name()), ".png") {
-			continue
+	err := filepath.WalkDir(dir, func(path string, d os.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+		if d.IsDir() || !strings.EqualFold(filepath.Ext(d.Name()), ".png") {
+			return nil
 		}
 
-		name := strings.TrimSuffix(e.Name(), filepath.Ext(e.Name()))
+		name := strings.TrimSuffix(d.Name(), filepath.Ext(d.Name()))
 		if prev, ok := seen[name]; ok {
-			return nil, fmt.Errorf("duplicate sprite name %q (%s and %s)", name, prev, e.Name())
+			return fmt.Errorf("duplicate sprite name %q (%s and %s)", name, prev, path)
 		}
-		seen[name] = e.Name()
+		seen[name] = path
 
-		path := filepath.Join(dir, e.Name())
 		f, err := os.Open(path)
 		if err != nil {
-			return nil, err
+			return err
 		}
 		img, err := png.Decode(f)
 		f.Close()
 		if err != nil {
-			return nil, fmt.Errorf("%s: %w", path, err)
+			return fmt.Errorf("%s: %w", path, err)
 		}
 
 		b := img.Bounds()
@@ -204,6 +205,10 @@ func loadSprites(dir string) ([]*Sprite, error) {
 			W:    b.Dx(),
 			H:    b.Dy(),
 		})
+		return nil
+	})
+	if err != nil {
+		return nil, err
 	}
 
 	return sprites, nil
